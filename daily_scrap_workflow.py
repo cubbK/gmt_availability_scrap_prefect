@@ -7,8 +7,7 @@ from prefect import flow, task
 import requests
 from datetime import datetime
 
-from games import Game
-import games
+from games import Game, games
 
 # Define the database URL
 DATABASE_URL = "postgresql+psycopg2://postgres:@localhost/postgres"
