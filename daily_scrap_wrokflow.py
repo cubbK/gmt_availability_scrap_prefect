@@ -1,5 +1,4 @@
 from typing import List, Dict, Any
-from typing_extensions import TypedDict
 from bs4 import BeautifulSoup
 from sqlalchemy import create_engine, Column, String, Text, Integer, DateTime
 from sqlalchemy.dialects.postgresql import JSON
@@ -7,6 +6,9 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 from prefect import flow, task
 import requests
 from datetime import datetime
+
+from games import Game
+import games
 
 # Define the database URL
 DATABASE_URL = "postgresql+psycopg2://postgres:@localhost/postgres"
@@ -23,16 +25,11 @@ class GameHTML(Base):
     game_id = Column(String, index=True)
     html_content = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
-    stores = Column(JSON, nullable=False)
+    stores = Column(JSON, nullable=True)
 
 
 # Create the table
 Base.metadata.create_all(bind=engine)
-
-
-class Game(TypedDict):
-    game_id: str
-    game_name: str
 
 
 @task
@@ -47,12 +44,21 @@ def fetch_game_page(game_id: str) -> str:
 
 
 @task
-def save_html_to_postgres(
-    game_id: str, html_content: str, stores: List[Dict[str, Any]]
-):
+def save_html_content(game_id: str, html_content: str) -> int:
     session = SessionLocal()
-    game_html = GameHTML(game_id=game_id, html_content=html_content, stores=stores)
-    session.merge(game_html)  # Use merge to handle both insert and update
+    game_html = GameHTML(game_id=game_id, html_content=html_content)
+    session.add(game_html)
+    session.commit()
+    session.refresh(game_html)  # Refresh to get the id
+    session.close()
+    return game_html.id
+
+
+@task
+def save_stores_to_postgres(id: int, stores: List[Dict[str, Any]]):
+    session = SessionLocal()
+    game_html = session.query(GameHTML).filter_by(id=id).first()
+    game_html.stores = stores
     session.commit()
     session.close()
 
@@ -61,9 +67,10 @@ def save_html_to_postgres(
 def track_availability(games: List[Game]):
     for game in games:
         html_content = fetch_game_page(game["game_id"])
-        # Assuming you have logic to extract stores data from the HTML content
+        game_html_id = save_html_content(game["game_id"], html_content)
+
         stores = extract_stores_from_html(html_content)
-        save_html_to_postgres(game["game_id"], html_content, stores)
+        save_stores_to_postgres(game_html_id, stores)
 
 
 def extract_stores_from_html(html_content: str) -> List[Dict[str, Any]]:
@@ -93,10 +100,4 @@ def extract_stores_from_html(html_content: str) -> List[Dict[str, Any]]:
 
 # Run the flow
 if __name__ == "__main__":
-    games: List[Game] = [
-        {
-            "game_id": "18375",
-            "game_name": "1846 Race for the Midwest",
-        }
-    ]
     track_availability(games)
