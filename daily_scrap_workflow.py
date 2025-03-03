@@ -1,3 +1,4 @@
+import os
 from typing import List, Dict, Any
 from bs4 import BeautifulSoup
 from sqlalchemy import create_engine, Column, String, Text, Integer, DateTime
@@ -8,10 +9,16 @@ import requests
 from datetime import datetime
 
 from games import Game, games
+from prefect.blocks.system import Secret
 
-# Define the database URL
-DATABASE_URL = "postgresql+psycopg2://postgres:@localhost/postgres"
+secret_block = Secret.load("database-url")
 
+
+DATABASE_URL = ""
+if os.getenv("DEV"):
+    DATABASE_URL = "postgresql+psycopg2://postgres:@localhost/postgres"
+else:
+    DATABASE_URL = secret_block.get()
 # Set up the database engine
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
