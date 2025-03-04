@@ -17,8 +17,13 @@ secret_block = Secret.load("database-url")
 DATABASE_URL = ""
 if os.getenv("DEV"):
     DATABASE_URL = "postgresql+psycopg2://postgres:@localhost/postgres"
+elif os.getenv("DATABASE_URL"):
+    database_url = os.getenv("DATABASE_URL")
+    print(f"Using DATABASE_URL from environment: {database_url}")
+    DATABASE_URL = database_url
 else:
     DATABASE_URL = secret_block.get()
+
 # Set up the database engine
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -29,6 +34,7 @@ class GameHTML(Base):
     __tablename__ = "gmt_availability_scrap_prefect_game_html"
     id = Column(Integer, primary_key=True, autoincrement=True)
     game_id = Column(String, index=True)
+    game_name = Column(String)
     html_content = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     stores = Column(JSON, nullable=True)
@@ -50,9 +56,11 @@ def fetch_game_page(game_id: str) -> str:
 
 
 @task
-def save_html_content(game_id: str, html_content: str) -> int:
+def save_html_content(game_id: str, game_name: str, html_content: str) -> int:
     session = SessionLocal()
-    game_html = GameHTML(game_id=game_id, html_content=html_content)
+    game_html = GameHTML(
+        game_id=game_id, game_name=game_name, html_content=html_content
+    )
     session.add(game_html)
     session.commit()
     session.refresh(game_html)  # Refresh to get the id
@@ -73,7 +81,9 @@ def save_stores_to_postgres(id: int, stores: List[Dict[str, Any]]):
 def track_availability(games: List[Game]):
     for game in games:
         html_content = fetch_game_page(game["game_id"])
-        game_html_id = save_html_content(game["game_id"], html_content)
+        game_html_id = save_html_content(
+            game["game_id"], game["game_name"], html_content
+        )
 
         stores = extract_stores_from_html(html_content)
         save_stores_to_postgres(game_html_id, stores)
