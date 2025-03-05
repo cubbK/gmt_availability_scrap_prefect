@@ -6,6 +6,8 @@ Graph:
 
 ![](./diagram.drawio.svg)
 
+![](./image.png)
+
 ## get started
 
 `python daily_scrap_workflow.py`
